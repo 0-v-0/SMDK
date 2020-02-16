@@ -16,9 +16,9 @@ body,div,li,dl,h1,h2,h3,table,th,td,input,button,select,textarea{margin:0;paddin
 .l{text-align:left}
 body,#l,#err{height:100%;font-family:Arial;background:#aaa;text-align:center}
 #l{position:fixed}
-h1{text-shadow:2px 1px #aaa;font-size:40pt}#about table,main{margin:0 auto;max-width:84%;box-shadow:3px 3px 5px #444}main{background:#f5f5f5;min-width:100px;padding:9px 5% 4%;border-radius:5px}legend,.b{font-size:25px;font-weight:bold}label{margin:0 10px;border-radius:3px;background:#ddd;border:1px solid #ccc;-webkit-user-select:none;cursor:pointer}#about{color:#444}h2,h3{color:#000}#about>div{overflow:auto;max-height:16em;border:solid 1px #333}
+h1{text-shadow:2px 1px #aaa;font-size:40pt}#about table,main{margin:0 auto;max-width:84%;box-shadow:3px 3px 5px #444}main{background:#f5f5f5;min-width:100px;padding:9px 5% 4%;border-radius:5px}legend,.b{font-size:25px;font-weight:bold}label{margin:0 10px;border-radius:3px;background:#ddd;border:1px solid #ccc;-webkit-user-select:none;cursor:pointer}#about{color:#444}h2,h3{color:#000}#output,#about>div{overflow:auto;max-height:16em;border:solid 1px #333}
 table,table td{border:solid 1px #000;border-collapse:collapse;padding:1px}tr:nth-of-type(odd){background:#ccc}tr:hover{background:#eea}
-#error{color:red}
+.red{color:red}
 input[type=file]{color:transparent}#dw,button,select,textarea,input[type=file]::-webkit-file-upload-button,code{margin:6px 9px;font-size:12pt;padding:4px;border:solid 1px #aacfe4;border-radius:5px;box-shadow:0 0 10px #ccc}input[type=text],select{width:12em;text-align:center}button,input[type=file]::-webkit-file-upload-button{width:209px;height:31px}
 #dw{background:#FFF}#dw::before{content:'';display:inline-block;height:1em;width:1em;margin:0 10px 0 0;background:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABQElEQVQ4T92TMU7DQBBFZ7zbUOEbkBtgQQ7gBsmp4hpB2BuQI8ANwgnYWIjarmJEwwEc4SOEG4SKZjfDrKMgO2yiSHS4W83M+zPzxwh//HBffX8wIhevZtnOvP8IOEuuVYD46NsNEUznZabaMe8OfBBfsQN1AOeDqxQpOK3K7L4N2RT3k9EdELxXL1mx6QKji8tISnFDgIppIQF9WGPT+vW5dhAEjF3bLk9IkfP7hL1dIpA2xk7Rec0Kn0zMrTUTV7jvNhqQkGPOSRHheA1gIhAxwD4cBhC3gJi6jhtAW5FpC55zYjEo6lIvXCxKVE/QasgbG7Nqr+PCNqADA8qRIGS1eNdYzRKFlIpVlZvpkH+r2RmCtsboXzYCsRuIQ/8hUQFIej57yn9s9CVGsQqDI6u4/ebqiNVWX0LXb3q5nf8Nymmadx3ne7YAAAAASUVORK5CYII=)}
 ::-webkit-scrollbar{width:12px;height:12px;margin:0}::-webkit-scrollbar-button{height:0;width:0}::-webkit-scrollbar-button:horizontal{background:transparent;width:8px}#l,#err,textarea,footer{width:100%}footer{margin:1em}
@@ -71,11 +71,17 @@ document.write('<link href="https://cdn.bootcss.com/codemirror/5.48.4/theme/'+th
 				<label><input type="checkbox" id="cn" checked>中文显示方块名</label>
 				<label><input type="checkbox" id="ca" checked>中文显示属性名</label>
 			</fieldset>
+			<fieldset>
+				<legend>Guid去重器选项</legend>
+				<label><input type="checkbox" id="minimize" />使用最简Guid</label>
+				<button onclick="analize();">开始解析</button>
+				<button onclick="clearDuplicate();">去除重复的Guid</button>
+			</fieldset>
 			<label for="autosave"><input type="checkbox" id="autosave">自动保存</label>
 			<textarea id="dst" rows="16" cols="80"></textarea>
 			<label>文件名：<input type="text" id="name"></label>
 			<a id="dw" href="javascript:$($('#dw'),URL.createObjectURL(new Blob([dst.getValue()],{type:type,charset:'utf-8'})),fname.value);">下载</a>
-			错误信息：<b id="error" class="l"></b>
+			日志信息：<pre id="output"></pre>
 			<div id="about">
 				<h2>Emmet转换工具使用说明</h2>
 				本工具是一款<a href="https://emmet.io/">emmet</a>转换工具，支持xml和emmet互转，自动识别格式
@@ -118,7 +124,7 @@ function conv(){
 		}else
 			str=html2emmet(str.replace(/&/g,"&amp;"),ind.value);
 		dst.setValue(str);
-	}catch(e){$("#error").innerText=e;throw e}
+	}catch(e){output.innerHTML='<b class="l error">'+e+"</b>";throw e}
 }
 function changestyle(){
 	editor.setOption("theme", theme.value);
@@ -148,6 +154,55 @@ editor.on("change",function(){
 	type="text/xml";
 	fname.value="out.xml";
 });
+var output = $("#output"),
+	min = $("#minimize"),
+	file_string = "",
+	guid_patt = /"\sGuid="((\{\()?[\d|a-f]{8}-[\d|a-f]{4}-[\d|a-f]{4}-[\d|a-f]{4}-[\d|a-f]{12}(\)\})?)"/g,
+	guid_patt2 = /"\sGuid="([\d|a-f]{32})"/g;
+function log(s) { output.innerHTML += s + "\n"; }
+function analize(){
+	var time_start = new Date().getTime(), n = {}, result = [], file_str = editor.getValue();
+	(file_str.match(guid_patt)||[]).concat(file_str.match(guid_patt2)||[])
+	.forEach(function(val, i, arr){
+			var guid = (val = val.slice(8, -1)).replace(/-/g,"");
+			if(!n[guid]) n[guid] = true;
+			else result.push(val);
+		});
+	log((result.length ? "有" + result.length + "个" : "没有") + "重复的Guid");
+	result.forEach(log);
+	log("本次操作耗时" + (new Date().getTime() - time_start) + "毫秒\n");
+}
+function clearDuplicate(){
+	function generateGuid(c){
+		var r = Math.random()*16|0;
+		return (c == 'x' ? r : (r&3|8)).toString(16);
+	}
+	var time_start = new Date().getTime(), n = {}, count = 0,
+	rep_patt = min.checked ? "xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx" : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx",
+	file_str = editor.getValue();
+	dst.setValue(file_str.replace(guid_patt, function(a, guid){
+		var newguid = guid.replace(/-/g,"");
+		if(!n[newguid]){
+			n[newguid] = true;
+			return a;
+		}
+		newguid = rep_patt.replace(/[xy]/g, generateGuid);
+		count++;
+		log("已将" + guid + "替换成" + newguid);
+		return " Guid=\"" + newguid + '"';
+	}).replace(guid_patt2, function(a, guid){
+		if(!n[guid]){
+			n[guid] = true;
+			return a;
+		}
+		var newguid = "xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx".replace(/[xy]/g, generateGuid);
+		count++;
+		log("已将" + guid + "替换成" + newguid);
+		return " Guid=\"" + newguid + '"';
+	}));
+	log((count ? "共去除" + count + "个" : "没有") + "重复的Guid");
+	log("本次操作耗时" + (new Date().getTime() - time_start) + "毫秒\n");
+}
 function cg(){v='<a id="dw" href="javascript:t=d_t($(\'#data\').innerHTML,1,\''+(lf.checked?"":"\\r")+"\\n',opener.u.value);$($(\'a\'),URL.createObjectURL(new Blob([t=o(o(t,opener.ca.checked&&ba,1),opener.cn.checked&&bc,1)],{type:'plain/text',charset:'utf-8'})),'"+f.value+"');\">生成 "+f.value+"</a>"}
 var AllBlocks,t,r,n,a,b,ba="Class Name;类名%DefaultDisplayName;默认显示名称%DefaultCategory;默认类别%Behaviors;行为%DisplayOrder;显示顺序%DefaultIconBlockOffset;默认方块图标偏移%DefaultIconViewOffset;默认图标视角偏移%DefaultIconViewScale;默认图标视角比例%FirstPersonScale;第一人称比例%FirstPersonOffset;第一人称偏移%FirstPersonRotation;第一人称旋转%InHandScale;在手中比例%InHandOffset;在手中偏移%InHandRotation;在手中旋转%CraftingId;合成标识%DefaultCreativeData;默认创造模式数据%IsCollidable;可碰撞%IsPlaceable;可放置%IsDiggingTransparent;挖掘透明%IsPlacementTransparent;放置透明%DefaultIsInteractive;默认可交互%IsEditable;可编辑%IsNonDuplicable;不可复制%IsGatherable;可收集%HasCollisionBehavior;有碰撞行为%KillsWhenStuck;卡住时杀死%IsFluidBlocker;可阻挡流体%IsTransparent;是否透明%DefaultShadowStrength;默认阴影强度%LightAttenuation;光衰减%EmittedLightAmount;发光强度%ObjectShadowStrength;物体阴影强度%DefaultDropContent;默认掉落%DefaultDropCount;默认掉落数量%DefaultExperienceCount;默认经验数量%RequiredToolLevel;需求工具等级%MaxStacking;最大堆积%MaxInHandStacking;最大手持%SleepSuitability;适合睡觉%FrictionFactor;摩擦系数%Density;密度%NoAutoJump;不自动跳跃%NoSmoothRise;不流畅上升%FuelHeatLevel;燃料等级%FuelFireDuration;燃料燃烧持续时间%DefaultSoundMaterialName;默认声音材料名称%ShovelPower;铲子效率%QuarryPower;镐子效率%HackPower;斧头效率%DefaultMeleePower;近战攻击力%DefaultMeleeHitProbability;默认近战击中概率%DefaultProjectilePower;投掷攻击力%ToolLevel;工具等级%PlayerLevelRequired;需求玩家等级%Durability;耐久度%IsAimable;可瞄准%IsStickable;可粘住%AlignToVelocity;成直线速率%ProjectileSpeed;投掷速度%ProjectileDamping;投掷阻尼%ProjectileTipOffset;投出点偏移%DisintegratesOnHit;撞击时碎裂%ProjectileStickProbability;物品粘住可能性%DefaultHeat;默认热量%FireDuration;燃烧持续时间%ExplosionResilience;爆炸抗性%DefaultExplosionPressure;默认爆炸压力%DefaultExplosionIncendiary;默认爆炸燃烧%IsExplosionTransparent;爆炸透明%DigMethod;挖掘方法%DigResilience;挖掘抗性%ProjectileResilience;弹射物抗性%DefaultNutritionalValue;营养价值%DefaultSicknessProbability;默认生病概率%FoodType;食物类型%DefaultRotPeriod;默认腐败时间%DefaultTextureSlot;默认材质槽%DestructionDebrisScale;破坏碎片比例%DefaultDescription;默认描述",bc="0;AirBlock;空气%1;BedrockBlock;基岩%2;DirtBlock;泥土%3;GraniteBlock;花岗岩%4;SandstoneBlock;砂岩%5;CobblestoneBlock;鹅卵石%6;GravelBlock;砾石%7;SandBlock;沙子%8;GrassBlock;草地%9;OakWoodBlock;橡木%10;BirchWoodBlock;桦木%11;SpruceWoodBlock;云杉木%12;OakLeavesBlock;橡树叶%13;BirchLeavesBlock;桦树叶%14;SpruceLeavesBlock;云杉叶%15;GlassBlock;玻璃%16;CoalOreBlock;煤矿石%17;WickerLampBlock;柳条灯%18;WaterBlock;水%19;TallGrassBlock;高草%20;RedFlowerBlock;红花%21;PlanksBlock;木板%22;CoalChunkBlock;煤%23;StickBlock;木棍%24;PurpleFlowerBlock;紫花%25;WhiteFlowerBlock;白花%26;StoneBrickBlock;石砖%27;CraftingTableBlock;合成台%28;DryBushBlock;干灌木%29;StoneAxeBlock;石斧%30;WoodenShovelBlock;木铲%31;TorchBlock;火把%32;WoodenPickaxeBlock;木稿%33;WoodenAxeBlock;木斧%34;StoneShovelBlock;石铲%35;StonePickaxeBlock;石稿%36;IronShovelBlock;铁铲%37;IronAxeBlock;铁斧%38;IronPickaxeBlock;铁稿%39;IronOreBlock;铁矿石%40;IronIngotBlock;铁锭%41;CopperOreBlock;铜矿石%42;CopperIngotBlock;铜锭%43;MalachiteChunkBlock;孔雀石%44;FramedGlassBlock;框玻璃%45;ChestBlock;箱子%46;IronBlock;铁块%47;CopperBlock;铜块%48;CobblestoneStairsBlock;石梯%49;WoodenStairsBlock;木梯%50;StoneBrickStairsBlock;鹅卵石梯%51;SandstoneStairsBlock;砂岩梯%52;SandstoneSlabBlock;砂岩半砖%53;CobblestoneSlabBlock;鹅卵石半砖%54;StoneBrickSlabBlock;石砖半砖%55;WoodenSlabBlock;木半砖%56;WoodenDoorBlock;木门%57;IronDoorBlock;铁门%58;CellDoorBlock;牢门%59;WoodenLadderBlock;木梯%60;WindowBlock;窗户%61;SnowBlock;雪%62;IceBlock;冰块%63;ChristmasTreeBlock;圣诞树%64;FurnaceBlock;熔炉%65;LitFurnaceBlock;燃烧中熔炉%66;LimestoneBlock;石灰石%67;BasaltBlock;玄武岩%68;MarbleBlock;大理石%69;MarbleStairsBlock;大理石梯%70;MarbleSlabBlock;大理石%71;MalachiteBlock;孔雀石块%72;ClayBlock;粘土%73;BricksBlock;砖块%74;BrickBlock;砖%75;BrickSlabBlock;半砖%76;BrickStairsBlock;砖梯%77;RawBirdBlock;生鸟%78;CookedBirdBlock;熟鸟%79;StoneChunkBlock;石球%80;WoodenSpearBlock;木矛%81;StoneSpearBlock;石矛%82;IronSpearBlock;铁矛%83;WoodenTrapdoorBlock;木活板门%84;CellTrapdoorBlock;铁活板门%85;SnowballBlock;雪球%86;SpikedPlankBlock;钉刺板%87;GrassTrapBlock;陷阱草%88;RawBaconBlock;生肉%89;CookedBaconBlock;熟肉%90;EmptyBucketBlock;空桶%91;WaterBucketBlock;水桶%92;MagmaBlock;岩浆%93;MagmaBucketBlock;岩浆桶%94;WoodenFenceBlock;木栅栏%95;BasaltSlabBlock;玄武岩半砖%96;BasaltStairsBlock;玄武岩梯%97;WoodenPostedSignBlock;木标志牌%98;WoodenAttachedSignBlock;木附着标志牌%99;LargeDryBushBlock;大干灌木%100;SaltpeterOreBlock;硝石矿%101;SulphurOreBlock;硫矿石%102;SaltpeterChunkBlock;硝石块%103;SulphurChunkBlock;硫块%104;FireBlock;火%105;SmallGunpowderKegBlock;小火药桶%106;MediumGunpowderKegBlock;中火药桶%107;LargeGunpowderKegBlock;大火药桶%108;MatchBlock;火柴%109;GunpowderBlock;火药%110;MilkBucketBlock;牛奶桶%111;DiamondChunkBlock;钻石块%112;DiamondOreBlock;钻石矿%113;DiamondShovelBlock;钻石铲%114;DiamondAxeBlock;钻石斧%115;DiamondPickaxeBlock;钻石镐%116;DiamondSpearBlock;钻石矛%117;CompassBlock;指南针%118;EggBlock;蛋%119;SaplingBlock;树苗%120;ThermometerBlock;温度计%121;HygrometerBlock;湿度计%122;WoodenMacheteBlock;木刀%123;StoneMacheteBlock;石刀%124;IronMacheteBlock;铁刀%125;DiamondMacheteBlock;钻石刀%126;DiamondBlock;钻石块%127;CactusBlock;仙人掌%128;PaintStripperBucketBlock;脱漆剂桶%129;PaintBucketBlock;油漆桶%130;PigmentBlock;颜料%131;PumpkinBlock;南瓜%132;JackOLanternBlock;南瓜灯%133;WireBlock;电线%134;NandGateBlock;与非门%135;NorGateBlock;或非门%136;StoneSlabBlock;半石%137;AndGateBlock;与门%138;BatteryBlock;电池%139;LightbulbBlock;灯泡%140;NotGateBlock;非门%141;SwitchBlock;开关%142;ButtonBlock;按钮%143;OrGateBlock;或门%144;PressurePlateBlock;压力板%145;DelayGateBlock;延迟门%146;SRLatchBlock;SR锁存器%147;DetonatorBlock;雷管%148;GermaniumOreBlock;锗矿石%149;GermaniumChunkBlock;锗块%150;CoalBlock;煤块%151;PhotodiodeBlock;光敏二极管%152;LedBlock;LED%153;WireThroughPlanksBlock;穿线木板%154;WireThroughStoneBlock;穿线石%155;WireThroughSemiconductorBlock;穿线半导体%156;XorGateBlock;异或门%157;RandomGeneratorBlock;随机发生器%158;SaddleBlock;马鞍%159;LeatherBlock;皮革%160;WhistleBlock;哨子%161;RawFishBlock;生鱼%162;CookedFishBlock;熟鱼%163;BasaltFenceBlock;玄武岩栅栏%164;BrickFenceBlock;砖栅栏%165;CopperAxeBlock;铜斧%166;WoodenFenceGateBlock;木栅栏门%167;MagnetBlock;磁铁%168;SoilBlock;土壤%169;WoodenRakeBlock;木耙%170;StoneRakeBlock;石耙%171;IronRakeBlock;铁耙%172;DiamondRakeBlock;钻石耙%173;SeedsBlock;种子%174;RyeBlock;黑麦%175;FlourBlock;面粉%176;DoughBlock;面团%177;BreadBlock;面包%178;BoatBlock;船%179;MotionDetectorBlock;运动探测器%180;DigitalToAnalogConverterBlock;数模转换器%181;AnalogToDigitalConverterBlock;模数转换器%182;FourLedBlock;4-LED%183;SoundGeneratorBlock;声音发生器%184;CounterBlock;计数器%185;SevenSegmentDisplayBlock;七段显示器%186;MemoryBankBlock;内存条%187;RealTimeClockBlock;实时钟%188;TruthTableCircuitBlock;真值表%189;GravestoneBlock;墓碑%190;TreasureGeneratorBlock;宝物生成器%191;BowBlock;弓%192;ArrowBlock;箭%193;IronFenceBlock;铁栅栏%194;IronFenceGateBlock;铁栅栏门%195;RodBlock;铁棍%196;FeatherBlock;羽毛%197;IvyBlock;常春藤%198;StringBlock;绳子%199;TargetBlock;靶子%200;CrossbowBlock;弩%201;BombBlock;炸弹%202;StoneFenceBlock;石栅栏%203;ClothingBlock;衣服%204;CottonBlock;棉花%205;CottonWadBlock;棉花团%206;CanvasBlock;帆布%207;FurBlock;毛皮%208;CarpetBlock;地毯%209;CampfireBlock;篝火%210;IronPostedSignBlock;铁标志牌%211;IronAttachedSignBlock;铁附着标志牌%212;MusketBlock;火枪%213;IronLadderBlock;铁梯%214;BulletBlock;子弹%215;FireworksBlock;烟花%216;DispenserBlock;发射器%217;StoneStairsBlock;石梯%218;CopperPickaxeBlock;铜镐%219;CopperRakeBlock;铜耙%220;CopperSpearBlock;铜矛%221;CopperMacheteBlock;铜刀%222;CopperShovelBlock;铜铲%223;WireThroughBricksBlock;穿线砖块%224;AdjustableDelayGateBlock;可调延迟门%225;TallSpruceLeavesBlock;高云杉叶%226;SeaUrchinBlock;海胆%227;FurnitureBlock;家具%228;IncendiaryBombBlock;燃烧弹%229;StarfishBlock;海星%230;IronHammerBlock;铁锤%231;SemiconductorBlock;半导体%232;KelpBlock;海带%233;SeagrassBlock;海草%234;SmallIncendiaryKegBlock;小燃烧桶%235;MediumIncendiaryKegBlock;中燃烧桶%236;LargeIncendiaryKegBlock;大燃烧桶%237;PistonBlock;活塞%238;PistonHeadBlock;活塞头%239;RottenBirdBlock;烂鸟肉%240;RottenMeatBlock;腐肉%241;RottenFishBlock;烂鱼肉%242;RottenBreadBlock;烂面包%243;WireThroughCobblestoneBlock;穿线鹅卵石%244;RottenPumpkinBlock;烂南瓜%245;RottenMilkBucketBlock;臭牛奶桶%246;RottenEggBlock;臭蛋%247;RottenDoughBlock;烂面团%248;ExperienceBlock;经验球%249;IronOreChunkBlock;铁矿块%250;GermaniumOreChunkBlock;锗矿块%251;PumpkinSoupBucketBlock;南瓜汤%252;RottenPumpkinSoupBlock;臭南瓜汤%253;OneLedBlock;1-LED%254;MulticoloredLedBlock;多色LED",ca=$("#ca"),cn=$("#cn"),j=$("#js"),u=$("#c"),i=document.createElement("table"),d=document.createElement("table"),f=$("#name"),dz=$(".dropzone",1),l=dz.length,lf=$("#lf"),R=$("#r");
 if(name=="editor"){
